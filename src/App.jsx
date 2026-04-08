@@ -5,7 +5,7 @@ import AnalysisPanel from './components/AnalysisPanel';
 import PositionEditor from './components/PositionEditor';
 import ScreenshotImport from './components/ScreenshotImport';
 import { StockfishEngine } from './engine/stockfish';
-import { STARTING_FEN, EMPTY_FEN, fenToBoard, squareToCoords, isValidFen } from './utils/fen';
+import { STARTING_FEN, EMPTY_FEN, fenToBoard, boardToFen, squareToCoords, isValidFen, sanitizeFen } from './utils/fen';
 
 export default function App() {
   const [game, setGame] = useState(() => new Chess());
@@ -71,49 +71,59 @@ export default function App() {
     }
   }, []);
 
-  // Handle square click for move/select
-  const handleSquareClick = useCallback((square) => {
+  // Sync state from a board array (board is source of truth for setup)
+  const syncFromBoard = useCallback((newBoard, newTurn) => {
+    const t = newTurn || turn;
+    const newFen = boardToFen(newBoard, t);
+    setBoard(newBoard);
+    setFen(newFen);
+    setSelectedSquare(null);
+    setLegalMoves([]);
+    setLines([]);
+    setArrows([]);
+    setAnalyzing(false);
+    // Try to sync chess.js — may fail for illegal positions, that's fine
+    try {
+      setGame(new Chess(newFen));
+    } catch {
+      // Illegal position for chess.js, board array is still valid
+    }
+  }, [turn]);
+
+  // Free-form square click: pick up any piece, place it anywhere
+  const handleSquareClick = useCallback((square, rank, file) => {
     if (selectedSquare) {
-      // Try to make the move
-      try {
-        const gameCopy = new Chess(game.fen());
-        const move = gameCopy.move({
-          from: selectedSquare,
-          to: square,
-          promotion: 'q', // Always promote to queen for simplicity
-        });
-
-        if (move) {
-          syncFromFen(gameCopy.fen());
-          return;
-        }
-      } catch {
-        // Invalid move
-      }
-
-      // If we clicked on our own piece, select it instead
-      const piece = game.get(square);
-      if (piece && piece.color === game.turn()) {
-        setSelectedSquare(square);
-        const moves = game.moves({ square, verbose: true });
-        setLegalMoves(moves.map((m) => m.to));
+      // Clicked the same square — deselect
+      if (selectedSquare === square) {
+        setSelectedSquare(null);
+        setLegalMoves([]);
         return;
       }
 
-      // Deselect
-      setSelectedSquare(null);
-      setLegalMoves([]);
+      // Move the selected piece to this square (free-form, no legality check)
+      const fromCoords = squareToCoords(selectedSquare);
+      const newBoard = board.map(r => [...r]);
+      const piece = newBoard[fromCoords.rank][fromCoords.file];
+
+      if (piece) {
+        newBoard[fromCoords.rank][fromCoords.file] = null;
+        newBoard[rank][file] = piece;
+        syncFromBoard(newBoard);
+      } else {
+        setSelectedSquare(null);
+        setLegalMoves([]);
+      }
       return;
     }
 
-    // No selection yet — select a piece
-    const piece = game.get(square);
-    if (piece && piece.color === game.turn()) {
+    // No selection — select any piece on the clicked square
+    const piece = board[rank]?.[file];
+    if (piece) {
       setSelectedSquare(square);
-      const moves = game.moves({ square, verbose: true });
-      setLegalMoves(moves.map((m) => m.to));
+      // No legal move dots in free-form mode — all squares are valid targets
+      setLegalMoves([]);
     }
-  }, [selectedSquare, game, syncFromFen]);
+  }, [selectedSquare, board, syncFromBoard]);
 
   // Convert UCI move (e.g. "e2e4") to SAN notation
   const uciToSan = useCallback((uciMove, currentFen) => {
@@ -151,7 +161,8 @@ export default function App() {
     setArrows([]);
     setDepth(0);
 
-    const currentFen = game.fen();
+    // Use boardToFen as source of truth — game.fen() may be stale for illegal positions
+    const currentFen = boardToFen(board, turn);
 
     engine.onProgress = ({ depth: d, lines: progressLines }) => {
       setDepth(d);
@@ -186,10 +197,16 @@ export default function App() {
   const handleClear = useCallback(() => syncFromFen(EMPTY_FEN), [syncFromFen]);
 
   const handleToggleTurn = useCallback(() => {
-    const parts = game.fen().split(' ');
-    parts[1] = parts[1] === 'w' ? 'b' : 'w';
-    syncFromFen(parts.join(' '));
-  }, [game, syncFromFen]);
+    const newTurn = turn === 'w' ? 'b' : 'w';
+    setTurn(newTurn);
+    const newFen = boardToFen(board, newTurn);
+    setFen(newFen);
+    try {
+      setGame(new Chess(newFen));
+    } catch {
+      // fine for illegal positions
+    }
+  }, [turn, board]);
 
   const handleFenChange = useCallback((newFen) => {
     setFen(newFen);
@@ -199,8 +216,28 @@ export default function App() {
   }, [syncFromFen]);
 
   const handleFenDetected = useCallback((detectedFen) => {
+    // First try strict chess.js parsing
     if (isValidFen(detectedFen)) {
       syncFromFen(detectedFen);
+      return;
+    }
+    // Fall back to sanitizing — extract placement, fill defaults
+    const cleaned = sanitizeFen(detectedFen);
+    if (cleaned) {
+      const newBoard = fenToBoard(cleaned);
+      const newTurn = cleaned.split(' ')[1] || 'w';
+      setBoard(newBoard);
+      setFen(cleaned);
+      setTurn(newTurn);
+      setSelectedSquare(null);
+      setLegalMoves([]);
+      setLines([]);
+      setArrows([]);
+      try {
+        setGame(new Chess(cleaned));
+      } catch {
+        // Illegal position for chess.js — board still loaded
+      }
     }
   }, [syncFromFen]);
 

@@ -58,6 +58,54 @@ export function boardToFen(board, turn = 'w', castling = 'KQkq', enPassant = '-'
   return `${placement} ${turn} ${castling} ${enPassant} ${halfmove} ${fullmove}`;
 }
 
+/**
+ * Attempt to extract and sanitize a FEN string from text that may contain
+ * extra words, partial FEN, or formatting issues from an LLM response.
+ * Returns a usable FEN string or null if nothing salvageable.
+ */
+export function sanitizeFen(text) {
+  if (!text) return null;
+
+  // Try to find a FEN-like pattern: 8 ranks separated by /
+  // Piece placement uses: rnbqkpRNBQKP and digits 1-8
+  const fenPlacementRegex = /[rnbqkpRNBQKP1-8]+\/[rnbqkpRNBQKP1-8]+\/[rnbqkpRNBQKP1-8]+\/[rnbqkpRNBQKP1-8]+\/[rnbqkpRNBQKP1-8]+\/[rnbqkpRNBQKP1-8]+\/[rnbqkpRNBQKP1-8]+\/[rnbqkpRNBQKP1-8]+/;
+
+  const match = text.match(fenPlacementRegex);
+  if (!match) return null;
+
+  const placement = match[0];
+
+  // Validate: must be exactly 8 ranks, each summing to 8 squares
+  const ranks = placement.split('/');
+  if (ranks.length !== 8) return null;
+
+  for (const rank of ranks) {
+    let count = 0;
+    for (const ch of rank) {
+      if (ch >= '1' && ch <= '8') {
+        count += parseInt(ch);
+      } else if (/[rnbqkpRNBQKP]/.test(ch)) {
+        count += 1;
+      } else {
+        return null; // invalid character
+      }
+    }
+    if (count !== 8) return null;
+  }
+
+  // Try to extract the rest of the FEN fields from text after placement
+  const afterPlacement = text.slice(text.indexOf(placement) + placement.length).trim();
+  const parts = afterPlacement.split(/\s+/);
+
+  const turn = (parts[0] === 'w' || parts[0] === 'b') ? parts[0] : 'w';
+  const castling = (parts[1] && /^[KQkq-]+$/.test(parts[1])) ? parts[1] : '-';
+  const enPassant = (parts[2] && /^[a-h][36]$/.test(parts[2])) ? parts[2] : '-';
+  const halfmove = (parts[3] && /^\d+$/.test(parts[3])) ? parts[3] : '0';
+  const fullmove = (parts[4] && /^\d+$/.test(parts[4])) ? parts[4] : '1';
+
+  return `${placement} ${turn} ${castling} ${enPassant} ${halfmove} ${fullmove}`;
+}
+
 export function squareToCoords(square) {
   const file = square.charCodeAt(0) - 97; // a=0
   const rank = 8 - parseInt(square[1]);    // 8=0, 1=7

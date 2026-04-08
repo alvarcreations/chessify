@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react';
+import { sanitizeFen } from '../utils/fen';
 
 export default function ScreenshotImport({ onFenDetected, apiKey }) {
   const fileRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
 
   async function handleFile(file) {
     if (!file) return;
@@ -15,6 +17,7 @@ export default function ScreenshotImport({ onFenDetected, apiKey }) {
 
     setLoading(true);
     setError(null);
+    setSuccess(null);
 
     try {
       // Read file as base64
@@ -76,7 +79,14 @@ export default function ScreenshotImport({ onFenDetected, apiKey }) {
         throw new Error('Could not detect position from screenshot');
       }
 
-      onFenDetected(text);
+      // Try to sanitize the FEN from Claude's response
+      const cleaned = sanitizeFen(text);
+      if (!cleaned) {
+        throw new Error(`Could not parse FEN from response: ${text.slice(0, 80)}`);
+      }
+
+      setSuccess('Position detected');
+      onFenDetected(cleaned);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -138,6 +148,18 @@ export default function ScreenshotImport({ onFenDetected, apiKey }) {
           }}
         >
           {error}
+        </div>
+      )}
+      {success && !error && (
+        <div
+          style={{
+            color: 'var(--color-good)',
+            fontSize: 12,
+            marginTop: 8,
+            textAlign: 'center',
+          }}
+        >
+          {success}
         </div>
       )}
     </div>
