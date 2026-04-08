@@ -1,6 +1,47 @@
 import { useRef, useState } from 'react';
 import { sanitizeFen } from '../utils/fen';
 
+async function resizeImage(file, maxDim = 1200) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+
+      // Only resize if larger than maxDim or file > 4MB
+      if (width <= maxDim && height <= maxDim && file.size <= 4 * 1024 * 1024) {
+        // Small enough — use original
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          base64: reader.result.split(',')[1],
+          mediaType: file.type || 'image/png',
+        });
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      // Scale down
+      const scale = Math.min(maxDim / width, maxDim / height, 1);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      resolve({
+        base64: dataUrl.split(',')[1],
+        mediaType: 'image/jpeg',
+      });
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 const MODELS = [
   'claude-sonnet-4-20250514',
   'claude-3-5-sonnet-20241022',
@@ -65,14 +106,8 @@ export default function ScreenshotImport({ onFenDetected, apiKey }) {
     setSuccess(null);
 
     try {
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const mediaType = file.type || 'image/png';
+      // Resize large images to stay under API 5MB limit
+      const { base64, mediaType } = await resizeImage(file, 1200);
 
       // Try models in order until one works
       let text = null;
