@@ -2,10 +2,12 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Chess } from 'chess.js';
 import Board from './components/Board';
 import AnalysisPanel from './components/AnalysisPanel';
-import PositionEditor from './components/PositionEditor';
 import ScreenshotImport from './components/ScreenshotImport';
 import { StockfishEngine } from './engine/stockfish';
 import { STARTING_FEN, EMPTY_FEN, fenToBoard, boardToFen, squareToCoords, isValidFen, sanitizeFen } from './utils/fen';
+import { playMoveSound, playCaptureSound, playUndoSound } from './utils/sound';
+
+const MAX_HISTORY = 50;
 
 export default function App() {
   const [game, setGame] = useState(() => new Chess());
@@ -15,6 +17,9 @@ export default function App() {
   const [turn, setTurn] = useState('w');
   const [fen, setFen] = useState(STARTING_FEN);
   const [flipped, setFlipped] = useState(false);
+
+  // Undo history — stores FEN strings
+  const [history, setHistory] = useState([]);
 
   // Analysis state
   const [lines, setLines] = useState([]);
@@ -27,36 +32,75 @@ export default function App() {
   const engineRef = useRef(null);
   const [engineReady, setEngineReady] = useState(false);
 
-  // API key — persist in localStorage
+  // API key
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('chessify-api-key') || '');
   const [showApiKey, setShowApiKey] = useState(false);
 
   const handleApiKeyChange = useCallback((key) => {
     setApiKey(key);
-    if (key) {
-      localStorage.setItem('chessify-api-key', key);
-    } else {
-      localStorage.removeItem('chessify-api-key');
-    }
+    if (key) localStorage.setItem('chessify-api-key', key);
+    else localStorage.removeItem('chessify-api-key');
   }, []);
 
   // Initialize engine
   useEffect(() => {
     const engine = new StockfishEngine();
     engineRef.current = engine;
-
-    engine.init().then(() => {
-      setEngineReady(true);
-    }).catch((err) => {
-      console.error('Failed to init Stockfish:', err);
-    });
-
+    engine.init().then(() => setEngineReady(true)).catch((err) => console.error('Failed to init Stockfish:', err));
     return () => engine.destroy();
   }, []);
 
-  // Sync game state helper
-  const syncFromFen = useCallback((newFen) => {
+  // Push current state to history before making a change
+  const pushHistory = useCallback(() => {
+    const currentFen = boardToFen(board, turn);
+    setHistory(prev => {
+      const next = [...prev, currentFen];
+      return next.length > MAX_HISTORY ? next.slice(-MAX_HISTORY) : next;
+    });
+  }, [board, turn]);
+
+  // Undo — pop the last state from history
+  const handleUndo = useCallback(() => {
+    if (history.length === 0) return;
+    const prevFen = history[history.length - 1];
+    setHistory(prev => prev.slice(0, -1));
+
     try {
+      const newGame = new Chess(prevFen);
+      setGame(newGame);
+      setBoard(fenToBoard(prevFen));
+      setTurn(newGame.turn());
+      setFen(prevFen);
+    } catch {
+      // If chess.js rejects it, just load the board
+      setBoard(fenToBoard(prevFen));
+      setTurn(prevFen.split(' ')[1] || 'w');
+      setFen(prevFen);
+    }
+    setSelectedSquare(null);
+    setLegalMoves([]);
+    setLines([]);
+    setArrows([]);
+    setAnalyzing(false);
+    playUndoSound();
+  }, [history]);
+
+  // Keyboard shortcut: Ctrl+Z / Cmd+Z for undo
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        handleUndo();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo]);
+
+  // Sync game state from FEN (with history push)
+  const syncFromFen = useCallback((newFen, addToHistory = true) => {
+    try {
+      if (addToHistory) pushHistory();
       const newGame = new Chess(newFen);
       setGame(newGame);
       setBoard(fenToBoard(newFen));
@@ -68,12 +112,13 @@ export default function App() {
       setArrows([]);
       setAnalyzing(false);
     } catch {
-      // Invalid FEN, ignore
+      // Invalid FEN
     }
-  }, []);
+  }, [pushHistory]);
 
-  // Sync state from a board array (board is source of truth for setup)
-  const syncFromBoard = useCallback((newBoard, newTurn) => {
+  // Sync from board array (with history push)
+  const syncFromBoard = useCallback((newBoard, newTurn, isCapture = false) => {
+    pushHistory();
     const t = newTurn || turn;
     const newFen = boardToFen(newBoard, t);
     setBoard(newBoard);
@@ -83,14 +128,14 @@ export default function App() {
     setLines([]);
     setArrows([]);
     setAnalyzing(false);
-    try {
-      setGame(new Chess(newFen));
-    } catch {
-      // Illegal position for chess.js, board array is still valid
-    }
-  }, [turn]);
+    try { setGame(new Chess(newFen)); } catch { /* fine */ }
 
-  // Free-form square click: pick up any piece, place it anywhere
+    // Sound
+    if (isCapture) playCaptureSound();
+    else playMoveSound();
+  }, [turn, pushHistory]);
+
+  // Free-form square click
   const handleSquareClick = useCallback((square, rank, file) => {
     if (selectedSquare) {
       if (selectedSquare === square) {
@@ -102,11 +147,12 @@ export default function App() {
       const fromCoords = squareToCoords(selectedSquare);
       const newBoard = board.map(r => [...r]);
       const piece = newBoard[fromCoords.rank][fromCoords.file];
+      const target = newBoard[rank][file];
 
       if (piece) {
         newBoard[fromCoords.rank][fromCoords.file] = null;
         newBoard[rank][file] = piece;
-        syncFromBoard(newBoard);
+        syncFromBoard(newBoard, undefined, !!target);
       } else {
         setSelectedSquare(null);
         setLegalMoves([]);
@@ -121,7 +167,7 @@ export default function App() {
     }
   }, [selectedSquare, board, syncFromBoard]);
 
-  // Convert UCI move to SAN notation
+  // UCI to SAN
   const uciToSan = useCallback((uciMove, currentFen) => {
     try {
       const tempGame = new Chess(currentFen);
@@ -130,9 +176,7 @@ export default function App() {
       const promotion = uciMove.length > 4 ? uciMove[4] : undefined;
       const move = tempGame.move({ from, to, promotion });
       return move ? move.san : uciMove;
-    } catch {
-      return uciMove;
-    }
+    } catch { return uciMove; }
   }, []);
 
   const updateArrows = useCallback((analysisLines) => {
@@ -184,16 +228,24 @@ export default function App() {
     engine.analyze(currentFen, targetDepth, 3);
   }, [board, turn, engineReady, targetDepth, uciToSan, updateArrows]);
 
-  const handleReset = useCallback(() => syncFromFen(STARTING_FEN), [syncFromFen]);
-  const handleClear = useCallback(() => syncFromFen(EMPTY_FEN), [syncFromFen]);
+  const handleReset = useCallback(() => {
+    syncFromFen(STARTING_FEN);
+    playMoveSound();
+  }, [syncFromFen]);
+
+  const handleClear = useCallback(() => {
+    syncFromFen(EMPTY_FEN);
+    playMoveSound();
+  }, [syncFromFen]);
 
   const handleToggleTurn = useCallback(() => {
+    pushHistory();
     const newTurn = turn === 'w' ? 'b' : 'w';
     setTurn(newTurn);
     const newFen = boardToFen(board, newTurn);
     setFen(newFen);
     try { setGame(new Chess(newFen)); } catch { /* fine */ }
-  }, [turn, board]);
+  }, [turn, board, pushHistory]);
 
   const handleFenChange = useCallback((newFen) => {
     setFen(newFen);
@@ -203,10 +255,12 @@ export default function App() {
   const handleFenDetected = useCallback((detectedFen) => {
     if (isValidFen(detectedFen)) {
       syncFromFen(detectedFen);
+      playMoveSound();
       return;
     }
     const cleaned = sanitizeFen(detectedFen);
     if (cleaned) {
+      pushHistory();
       const newBoard = fenToBoard(cleaned);
       const newTurn = cleaned.split(' ')[1] || 'w';
       setBoard(newBoard);
@@ -217,8 +271,11 @@ export default function App() {
       setLines([]);
       setArrows([]);
       try { setGame(new Chess(cleaned)); } catch { /* fine */ }
+      playMoveSound();
     }
-  }, [syncFromFen]);
+  }, [syncFromFen, pushHistory]);
+
+  const canUndo = history.length > 0;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -296,9 +353,8 @@ export default function App() {
               />
             </div>
 
-            {/* Controls card — grouped setup + import */}
+            {/* Controls card */}
             <div className="glass-static" style={{ padding: '20px' }}>
-              {/* Setup section */}
               <div className="flex flex-col gap-3">
                 <span className="label">Setup</span>
                 <div className="flex flex-wrap items-center gap-2">
@@ -309,6 +365,15 @@ export default function App() {
                   </button>
                   <button className="btn-ghost" onClick={() => setFlipped(f => !f)}>
                     Flip Board
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    onClick={handleUndo}
+                    disabled={!canUndo}
+                    style={{ opacity: canUndo ? 1 : 0.3, cursor: canUndo ? 'pointer' : 'not-allowed' }}
+                    title="Undo (Ctrl+Z)"
+                  >
+                    Undo
                   </button>
                 </div>
                 <input
@@ -334,10 +399,8 @@ export default function App() {
                 />
               </div>
 
-              {/* Divider */}
               <div className="divider" style={{ margin: '16px 0' }} />
 
-              {/* Import section */}
               <div className="flex flex-col gap-3">
                 <span className="label">Import</span>
                 <ScreenshotImport
