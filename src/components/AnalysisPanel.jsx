@@ -1,6 +1,6 @@
 import { formatEval, evalToText, evalColor, getHumannessTag } from '../utils/evaluation';
 
-function MoveLine({ line, rank, bestScore }) {
+function MoveLine({ line, rank, bestScore, onHover, isHovered }) {
   const { score, isMate, mateIn, sanMove } = line;
   const evalStr = formatEval(score, isMate, mateIn);
   const evalDesc = evalToText(score, isMate, mateIn);
@@ -11,12 +11,16 @@ function MoveLine({ line, rank, bestScore }) {
   return (
     <div
       className="glass-inner flex items-center gap-4"
+      onMouseEnter={() => onHover?.(rank - 1)}
+      onMouseLeave={() => onHover?.(null)}
+      onClick={() => onHover?.(isHovered ? null : rank - 1)}
       style={{
         padding: '16px 18px',
         transition: 'transform var(--transition-fast), background var(--transition-fast)',
-        cursor: 'default',
+        cursor: 'pointer',
         position: 'relative',
         overflow: 'hidden',
+        background: isHovered ? 'rgba(255,255,255,0.06)' : undefined,
       }}
     >
       {/* Eval color stripe on left edge */}
@@ -91,7 +95,7 @@ function MoveLine({ line, rank, bestScore }) {
   );
 }
 
-export default function AnalysisPanel({ lines, depth, targetDepth, analyzing, onAnalyze }) {
+export default function AnalysisPanel({ lines, depth, targetDepth, analyzing, onAnalyze, onLineHover, hoveredLine }) {
   const hasLines = lines && lines.length > 0;
   const bestScore = hasLines ? lines[0].score : 0;
   const progress = targetDepth > 0 ? ((depth || 0) / targetDepth) * 100 : 0;
@@ -153,6 +157,8 @@ export default function AnalysisPanel({ lines, depth, targetDepth, analyzing, on
                 line={line}
                 rank={idx + 1}
                 bestScore={bestScore}
+                onHover={onLineHover}
+                isHovered={hoveredLine === idx}
               />
             ))}
           </div>

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Chess } from 'chess.js';
 import Board from './components/Board';
 import AnalysisPanel from './components/AnalysisPanel';
+import EvalBar from './components/EvalBar';
 import ScreenshotImport from './components/ScreenshotImport';
 import { StockfishEngine } from './engine/stockfish';
 import { STARTING_FEN, EMPTY_FEN, fenToBoard, boardToFen, squareToCoords, isValidFen, sanitizeFen } from './utils/fen';
@@ -27,6 +28,7 @@ export default function App() {
   const [depth, setDepth] = useState(0);
   const [targetDepth] = useState(22);
   const [arrows, setArrows] = useState([]);
+  const [hoveredLine, setHoveredLine] = useState(null);
 
   // Engine ref
   const engineRef = useRef(null);
@@ -277,6 +279,17 @@ export default function App() {
 
   const canUndo = history.length > 0;
 
+  // Compute visible arrows based on hovered line
+  const visibleArrows = hoveredLine !== null
+    ? arrows.filter((_, idx) => idx === hoveredLine).map(a => ({ ...a, opacity: 0.9 }))
+    : arrows;
+
+  // Extract best eval for the eval bar
+  const bestLine = lines.length > 0 ? lines[0] : null;
+  const bestCp = bestLine?.score ?? 0;
+  const bestIsMate = bestLine?.isMate ?? false;
+  const bestMateIn = bestLine?.mateIn ?? 0;
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -341,13 +354,19 @@ export default function App() {
         <div className="app-layout mx-auto" style={{ maxWidth: 1200 }}>
           {/* Left column: Board + controls */}
           <div className="flex flex-col gap-5">
-            {/* Board */}
-            <div className="glass-static board-wrap">
+            {/* Board + Eval Bar */}
+            <div className="glass-static board-wrap" style={{ display: 'flex', gap: 12 }}>
+              <EvalBar
+                cp={bestCp}
+                isMate={bestIsMate}
+                mateIn={bestMateIn}
+                visible={lines.length > 0}
+              />
               <Board
                 board={board}
                 selectedSquare={selectedSquare}
                 legalMoves={legalMoves}
-                arrows={arrows}
+                arrows={visibleArrows}
                 onSquareClick={handleSquareClick}
                 flipped={flipped}
               />
@@ -419,6 +438,8 @@ export default function App() {
               targetDepth={targetDepth}
               analyzing={analyzing}
               onAnalyze={handleAnalyze}
+              onLineHover={setHoveredLine}
+              hoveredLine={hoveredLine}
             />
           </div>
         </div>
