@@ -11,8 +11,8 @@
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-border-hover: rgba(255, 255, 255, 0.12);
   --glass-blur: blur(40px);
-  --glass-radius: 16px;
-  --glass-radius-sm: 12px;
+  --glass-radius: 20px;
+  --glass-radius-sm: 14px;
   --glass-radius-xs: 8px;
 
   /* Text hierarchy — white through opacity */
@@ -32,15 +32,10 @@
   --accent-glow: rgba(124, 92, 252, 0.25);
 
   /* Board */
-  --board-light: rgba(255, 255, 255, 0.02);
-  --board-dark: rgba(255, 255, 255, 0.06);
+  --board-light: rgba(255, 255, 255, 0.025);
+  --board-dark: rgba(255, 255, 255, 0.07);
   --board-selected: rgba(124, 92, 252, 0.2);
   --board-legal: rgba(124, 92, 252, 0.12);
-
-  /* Arrow opacities */
-  --arrow-best: 0.8;
-  --arrow-second: 0.45;
-  --arrow-third: 0.25;
 
   /* Motion */
   --transition-fast: 150ms ease-out;
@@ -69,7 +64,7 @@ body {
   overflow-x: hidden;
 }
 
-/* Ambient light gradients on body */
+/* Ambient light gradients — slightly stronger for spatial depth */
 body::before {
   content: "";
   position: fixed;
@@ -77,9 +72,9 @@ body::before {
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(ellipse at 20% 0%, rgba(255, 255, 255, 0.015), transparent 60%),
-    radial-gradient(ellipse at 80% 100%, rgba(255, 255, 255, 0.01), transparent 50%),
-    radial-gradient(ellipse at 50% 50%, rgba(124, 92, 252, 0.008), transparent 70%);
+    radial-gradient(ellipse at 15% 0%, rgba(255, 255, 255, 0.025), transparent 55%),
+    radial-gradient(ellipse at 85% 100%, rgba(255, 255, 255, 0.015), transparent 50%),
+    radial-gradient(ellipse at 50% 40%, rgba(124, 92, 252, 0.012), transparent 65%);
 }
 
 #root {
@@ -110,9 +105,14 @@ body::before {
 }
 
 .glass-inner {
-  background: var(--glass-bg);
+  background: rgba(255, 255, 255, 0.025);
   border: 1px solid var(--glass-border);
   border-radius: var(--glass-radius-sm);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.glass-inner:hover {
+  background: rgba(255, 255, 255, 0.04);
 }
 
 /* ---- Typography ---- */
@@ -135,17 +135,19 @@ body::before {
   color: white;
   border: none;
   border-radius: var(--glass-radius-xs);
-  padding: 10px 20px;
+  padding: 12px 24px;
   font-family: "Inter", sans-serif;
   font-weight: 500;
   font-size: 13px;
   letter-spacing: 0.02em;
   cursor: pointer;
-  transition: transform var(--transition-fast), background var(--transition-fast);
+  transition: transform var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+  box-shadow: 0 0 20px rgba(124, 92, 252, 0.15);
 }
 
 .btn-primary:hover {
   background: var(--accent-hover);
+  box-shadow: 0 0 30px rgba(124, 92, 252, 0.25);
 }
 
 .btn-primary:active {
@@ -172,12 +174,13 @@ body::before {
   font-weight: 500;
   font-size: 13px;
   cursor: pointer;
-  transition: transform var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+  transition: transform var(--transition-fast), background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .btn-ghost:hover {
   background: var(--glass-bg-hover);
   color: var(--text-primary);
+  border-color: var(--glass-border-hover);
 }
 
 .btn-ghost:active {
@@ -212,17 +215,52 @@ body::before {
   border-radius: var(--glass-radius-sm);
 }
 
+.board-wrap {
+  padding: 16px;
+  box-shadow: 0 0 60px rgba(124, 92, 252, 0.04), 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+/* ---- Divider ---- */
+.divider {
+  height: 1px;
+  background: var(--glass-border);
+  width: 100%;
+}
+
+/* ---- Pulsing dot ---- */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.pulse-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
 /* ---- Responsive layout ---- */
 .app-layout {
   display: grid;
-  grid-template-columns: minmax(0, 560px) minmax(300px, 1fr);
-  gap: 24px;
+  grid-template-columns: minmax(0, 600px) minmax(320px, 1fr);
+  gap: 32px;
   align-items: start;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 960px) {
   .app-layout {
     grid-template-columns: 1fr;
-    max-width: 560px;
+    max-width: 600px;
   }
+}
+
+/* ---- Header gradient border ---- */
+.header-border {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08) 20%, rgba(124, 92, 252, 0.15) 50%, rgba(255, 255, 255, 0.08) 80%, transparent);
 }

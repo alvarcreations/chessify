@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { coordsToSquare } from '../utils/fen';
 
-const BOARD_SIZE = 560;
+const BOARD_SIZE = 600;
 const SQUARE_SIZE = BOARD_SIZE / 8;
 
 // Unicode chess pieces — crisp at any size, always available

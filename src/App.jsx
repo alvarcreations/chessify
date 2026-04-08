@@ -82,7 +82,6 @@ export default function App() {
     setLines([]);
     setArrows([]);
     setAnalyzing(false);
-    // Try to sync chess.js — may fail for illegal positions, that's fine
     try {
       setGame(new Chess(newFen));
     } catch {
@@ -93,14 +92,12 @@ export default function App() {
   // Free-form square click: pick up any piece, place it anywhere
   const handleSquareClick = useCallback((square, rank, file) => {
     if (selectedSquare) {
-      // Clicked the same square — deselect
       if (selectedSquare === square) {
         setSelectedSquare(null);
         setLegalMoves([]);
         return;
       }
 
-      // Move the selected piece to this square (free-form, no legality check)
       const fromCoords = squareToCoords(selectedSquare);
       const newBoard = board.map(r => [...r]);
       const piece = newBoard[fromCoords.rank][fromCoords.file];
@@ -116,16 +113,14 @@ export default function App() {
       return;
     }
 
-    // No selection — select any piece on the clicked square
     const piece = board[rank]?.[file];
     if (piece) {
       setSelectedSquare(square);
-      // No legal move dots in free-form mode — all squares are valid targets
       setLegalMoves([]);
     }
   }, [selectedSquare, board, syncFromBoard]);
 
-  // Convert UCI move (e.g. "e2e4") to SAN notation
+  // Convert UCI move to SAN notation
   const uciToSan = useCallback((uciMove, currentFen) => {
     try {
       const tempGame = new Chess(currentFen);
@@ -139,7 +134,6 @@ export default function App() {
     }
   }, []);
 
-  // Build arrows from analysis lines
   const updateArrows = useCallback((analysisLines) => {
     const opacities = [0.8, 0.45, 0.25];
     const newArrows = analysisLines.slice(0, 3).map((line, idx) => {
@@ -151,7 +145,6 @@ export default function App() {
     setArrows(newArrows);
   }, []);
 
-  // Analyze position
   const handleAnalyze = useCallback(() => {
     const engine = engineRef.current;
     if (!engine || !engineReady) return;
@@ -161,7 +154,6 @@ export default function App() {
     setArrows([]);
     setDepth(0);
 
-    // Use boardToFen as source of truth — game.fen() may be stale for illegal positions
     const currentFen = boardToFen(board, turn);
 
     engine.onProgress = ({ depth: d, lines: progressLines }) => {
@@ -189,11 +181,9 @@ export default function App() {
     };
 
     engine.analyze(currentFen, targetDepth, 3);
-  }, [game, engineReady, targetDepth, uciToSan, updateArrows]);
+  }, [board, turn, engineReady, targetDepth, uciToSan, updateArrows]);
 
-  // Position editor callbacks
   const handleReset = useCallback(() => syncFromFen(STARTING_FEN), [syncFromFen]);
-
   const handleClear = useCallback(() => syncFromFen(EMPTY_FEN), [syncFromFen]);
 
   const handleToggleTurn = useCallback(() => {
@@ -201,27 +191,19 @@ export default function App() {
     setTurn(newTurn);
     const newFen = boardToFen(board, newTurn);
     setFen(newFen);
-    try {
-      setGame(new Chess(newFen));
-    } catch {
-      // fine for illegal positions
-    }
+    try { setGame(new Chess(newFen)); } catch { /* fine */ }
   }, [turn, board]);
 
   const handleFenChange = useCallback((newFen) => {
     setFen(newFen);
-    if (isValidFen(newFen)) {
-      syncFromFen(newFen);
-    }
+    if (isValidFen(newFen)) syncFromFen(newFen);
   }, [syncFromFen]);
 
   const handleFenDetected = useCallback((detectedFen) => {
-    // First try strict chess.js parsing
     if (isValidFen(detectedFen)) {
       syncFromFen(detectedFen);
       return;
     }
-    // Fall back to sanitizing — extract placement, fill defaults
     const cleaned = sanitizeFen(detectedFen);
     if (cleaned) {
       const newBoard = fenToBoard(cleaned);
@@ -233,67 +215,76 @@ export default function App() {
       setLegalMoves([]);
       setLines([]);
       setArrows([]);
-      try {
-        setGame(new Chess(cleaned));
-      } catch {
-        // Illegal position for chess.js — board still loaded
-      }
+      try { setGame(new Chess(cleaned)); } catch { /* fine */ }
     }
   }, [syncFromFen]);
 
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-        <div className="flex items-center gap-3">
-          <h1 style={{ fontWeight: 600, fontSize: 18, color: 'var(--text-primary)' }}>
-            Chessify
-          </h1>
-          <span className="label" style={{ marginTop: 2 }}>Position Analyzer</span>
+      <header style={{ padding: '16px 32px' }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: 'var(--accent)',
+              boxShadow: '0 0 12px var(--accent-glow)',
+            }} />
+            <h1 style={{ fontWeight: 600, fontSize: 18, color: 'var(--text-primary)' }}>
+              Chessify
+            </h1>
+            <span className="label" style={{ marginTop: 1 }}>Position Analyzer</span>
+          </div>
+          <button
+            className="btn-ghost"
+            onClick={() => setShowApiKey(!showApiKey)}
+            style={{ fontSize: 12 }}
+          >
+            {apiKey ? 'API Key Set' : 'Set API Key'}
+          </button>
         </div>
-        <button
-          className="btn-ghost"
-          onClick={() => setShowApiKey(!showApiKey)}
-          style={{ fontSize: 12 }}
-        >
-          {apiKey ? 'API Key Set' : 'Set API Key'}
-        </button>
       </header>
+      <div className="header-border" />
 
       {/* API Key input */}
       {showApiKey && (
-        <div className="px-6 py-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-          <div className="flex items-center gap-3" style={{ maxWidth: 500 }}>
-            <span className="label" style={{ whiteSpace: 'nowrap' }}>Anthropic API Key</span>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => handleApiKeyChange(e.target.value)}
-              placeholder="sk-ant-..."
-              style={{
-                flex: 1,
-                background: 'var(--glass-bg)',
-                border: '1px solid var(--glass-border)',
-                borderRadius: 'var(--glass-radius-xs)',
-                padding: '6px 10px',
-                color: 'var(--text-primary)',
-                fontSize: 12,
-                fontFamily: 'monospace',
-                outline: 'none',
-              }}
-              onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
-              onBlur={(e) => (e.target.style.borderColor = 'var(--glass-border)')}
-            />
+        <>
+          <div style={{ padding: '12px 32px' }}>
+            <div className="flex items-center gap-3" style={{ maxWidth: 500 }}>
+              <span className="label" style={{ whiteSpace: 'nowrap' }}>Anthropic API Key</span>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => handleApiKeyChange(e.target.value)}
+                placeholder="sk-ant-..."
+                style={{
+                  flex: 1,
+                  background: 'var(--glass-bg)',
+                  border: '1px solid var(--glass-border)',
+                  borderRadius: 'var(--glass-radius-xs)',
+                  padding: '8px 12px',
+                  color: 'var(--text-primary)',
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  outline: 'none',
+                  transition: 'border-color var(--transition-fast)',
+                }}
+                onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+                onBlur={(e) => (e.target.style.borderColor = 'var(--glass-border)')}
+              />
+            </div>
           </div>
-        </div>
+          <div className="header-border" />
+        </>
       )}
 
       {/* Main content */}
-      <main className="flex-1 p-6">
-        <div className="app-layout mx-auto" style={{ maxWidth: 1100 }}>
-          {/* Left: Board + controls */}
-          <div className="flex flex-col gap-4">
-            <div className="glass-static" style={{ padding: 12 }}>
+      <main style={{ flex: 1, padding: '32px' }}>
+        <div className="app-layout mx-auto" style={{ maxWidth: 1200 }}>
+          {/* Left column: Board + controls */}
+          <div className="flex flex-col gap-5">
+            {/* Board */}
+            <div className="glass-static board-wrap">
               <Board
                 board={board}
                 selectedSquare={selectedSquare}
@@ -303,29 +294,65 @@ export default function App() {
               />
             </div>
 
-            <PositionEditor
-              turn={turn}
-              onReset={handleReset}
-              onClear={handleClear}
-              onToggleTurn={handleToggleTurn}
-              fen={fen}
-              onFenChange={handleFenChange}
-            />
+            {/* Controls card — grouped setup + import */}
+            <div className="glass-static" style={{ padding: '20px' }}>
+              {/* Setup section */}
+              <div className="flex flex-col gap-3">
+                <span className="label">Setup</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button className="btn-ghost" onClick={handleReset}>Reset</button>
+                  <button className="btn-ghost" onClick={handleClear}>Clear</button>
+                  <button className="btn-ghost" onClick={handleToggleTurn}>
+                    Turn: {turn === 'w' ? 'White' : 'Black'}
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={fen}
+                  onChange={(e) => handleFenChange(e.target.value)}
+                  placeholder="Paste FEN string..."
+                  spellCheck={false}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px solid var(--glass-border)',
+                    borderRadius: 'var(--glass-radius-xs)',
+                    padding: '10px 14px',
+                    color: 'var(--text-primary)',
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    outline: 'none',
+                    transition: 'border-color var(--transition-fast)',
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+                  onBlur={(e) => (e.target.style.borderColor = 'var(--glass-border)')}
+                />
+              </div>
 
-            <ScreenshotImport
-              onFenDetected={handleFenDetected}
-              apiKey={apiKey}
-            />
+              {/* Divider */}
+              <div className="divider" style={{ margin: '16px 0' }} />
+
+              {/* Import section */}
+              <div className="flex flex-col gap-3">
+                <span className="label">Import</span>
+                <ScreenshotImport
+                  onFenDetected={handleFenDetected}
+                  apiKey={apiKey}
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Right: Analysis panel */}
-          <AnalysisPanel
-            lines={lines}
-            depth={depth}
-            targetDepth={targetDepth}
-            analyzing={analyzing}
-            onAnalyze={handleAnalyze}
-          />
+          {/* Right column: Analysis */}
+          <div style={{ position: 'sticky', top: 24 }}>
+            <AnalysisPanel
+              lines={lines}
+              depth={depth}
+              targetDepth={targetDepth}
+              analyzing={analyzing}
+              onAnalyze={handleAnalyze}
+            />
+          </div>
         </div>
       </main>
     </div>

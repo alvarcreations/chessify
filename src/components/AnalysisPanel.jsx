@@ -9,15 +9,37 @@ function MoveLine({ line, rank, bestScore }) {
   const tag = getHumannessTag(sanMove || '', rank, evalDiff);
 
   return (
-    <div className="glass-inner p-4 flex items-center gap-4" style={{ transition: 'transform var(--transition-fast)', cursor: 'default' }}>
+    <div
+      className="glass-inner flex items-center gap-4"
+      style={{
+        padding: '16px 18px',
+        transition: 'transform var(--transition-fast), background var(--transition-fast)',
+        cursor: 'default',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Eval color stripe on left edge */}
+      <div style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 3,
+        background: color,
+        borderRadius: '3px 0 0 3px',
+        opacity: 0.8,
+      }} />
+
       {/* Rank number */}
       <span
         className="hero-number"
         style={{
-          fontSize: 28,
-          minWidth: 28,
+          fontSize: 26,
+          minWidth: 24,
           textAlign: 'center',
-          color: 'var(--text-tertiary)',
+          color: 'var(--text-disabled)',
+          marginLeft: 4,
         }}
       >
         {rank}
@@ -26,25 +48,28 @@ function MoveLine({ line, rank, bestScore }) {
       {/* Move + description */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-3">
-          <span style={{ fontWeight: 600, fontSize: 16, color: 'var(--text-primary)' }}>
+          <span style={{ fontWeight: 600, fontSize: 17, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
             {sanMove || line.pv?.[0] || '...'}
           </span>
           {tag && (
             <span
-              className="label"
               style={{
                 fontSize: 10,
+                fontWeight: 500,
                 color: 'var(--text-secondary)',
-                background: 'var(--glass-bg-strong)',
-                padding: '2px 8px',
-                borderRadius: 4,
+                background: 'rgba(255,255,255,0.05)',
+                padding: '3px 10px',
+                borderRadius: 6,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                border: '1px solid rgba(255,255,255,0.06)',
               }}
             >
               {tag}
             </span>
           )}
         </div>
-        <div className="label" style={{ marginTop: 4 }}>
+        <div className="label" style={{ marginTop: 5, fontSize: 10 }}>
           {evalDesc}
         </div>
       </div>
@@ -53,10 +78,11 @@ function MoveLine({ line, rank, bestScore }) {
       <span
         className="hero-number"
         style={{
-          fontSize: 32,
+          fontSize: 38,
           color,
-          minWidth: 80,
+          minWidth: 90,
           textAlign: 'right',
+          lineHeight: 1,
         }}
       >
         {evalStr}
@@ -71,35 +97,36 @@ export default function AnalysisPanel({ lines, depth, targetDepth, analyzing, on
   const progress = targetDepth > 0 ? ((depth || 0) / targetDepth) * 100 : 0;
 
   return (
-    <div className="glass-static flex flex-col" style={{ overflow: 'hidden' }}>
+    <div className="glass-static flex flex-col" style={{ overflow: 'hidden', minHeight: 400 }}>
       {/* Progress bar */}
-      {analyzing && (
-        <div style={{ height: 2, background: 'var(--glass-bg)' }}>
+      <div style={{ height: 3, background: analyzing ? 'var(--glass-bg-strong)' : 'transparent' }}>
+        {analyzing && (
           <div
             style={{
               height: '100%',
               width: `${progress}%`,
               background: 'var(--accent)',
               transition: 'width 300ms ease-out',
+              boxShadow: '0 0 8px var(--accent-glow)',
             }}
           />
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className="p-5 flex flex-col gap-4">
+      <div style={{ padding: '24px 24px 28px' }} className="flex flex-col gap-5 flex-1">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <span className="label">Top Lines</span>
+          <span className="label" style={{ fontSize: 11 }}>Engine Analysis</span>
           {hasLines && (
             <span className="label">
-              Depth: {depth || '—'}{analyzing && targetDepth ? ` / ${targetDepth}` : ''}
+              Depth {depth || '—'}{analyzing && targetDepth ? ` / ${targetDepth}` : ''}
             </span>
           )}
         </div>
 
         {/* Analyze button */}
         {!analyzing && (
-          <button className="btn-primary w-full" onClick={onAnalyze}>
+          <button className="btn-primary w-full" onClick={onAnalyze} style={{ padding: '14px 24px' }}>
             {hasLines ? 'Re-analyze' : 'Analyze Position'}
           </button>
         )}
@@ -109,16 +136,17 @@ export default function AnalysisPanel({ lines, depth, targetDepth, analyzing, on
               textAlign: 'center',
               color: 'var(--text-secondary)',
               fontSize: 13,
-              padding: '8px 0',
+              padding: '10px 0',
             }}
           >
-            Analyzing{depth ? ` — depth ${depth}` : ''}...
+            <span className="pulse-dot" />
+            Analyzing{depth ? ` \u2014 depth ${depth}` : ''}...
           </div>
         )}
 
         {/* Move lines */}
         {hasLines && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {lines.map((line, idx) => (
               <MoveLine
                 key={idx}
@@ -130,16 +158,26 @@ export default function AnalysisPanel({ lines, depth, targetDepth, analyzing, on
           </div>
         )}
 
+        {/* Empty state */}
         {!hasLines && !analyzing && (
           <div
-            style={{
-              color: 'var(--text-disabled)',
-              fontSize: 13,
-              textAlign: 'center',
-              padding: '32px 0',
-            }}
+            className="flex-1 flex flex-col items-center justify-center"
+            style={{ padding: '24px 0', minHeight: 180 }}
           >
-            Set up a position and click Analyze
+            {/* Decorative chess piece icon */}
+            <div style={{
+              fontSize: 48,
+              color: 'var(--text-disabled)',
+              marginBottom: 16,
+              opacity: 0.5,
+              fontFamily: "'Segoe UI Symbol', 'Noto Sans Symbols 2', serif",
+            }}>
+              {'\u2658'}
+            </div>
+            <div style={{ color: 'var(--text-disabled)', fontSize: 13, textAlign: 'center', lineHeight: 1.5 }}>
+              Set up a position and click<br />
+              <span style={{ color: 'var(--text-tertiary)' }}>Analyze</span> to see the top 3 engine moves
+            </div>
           </div>
         )}
       </div>
