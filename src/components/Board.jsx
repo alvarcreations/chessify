@@ -15,11 +15,15 @@ function getPieceKey(piece) {
   return piece.color + piece.type;
 }
 
-function MoveArrow({ from, to, opacity }) {
-  const fromX = from.file * SQUARE_SIZE + SQUARE_SIZE / 2;
-  const fromY = from.rank * SQUARE_SIZE + SQUARE_SIZE / 2;
-  const toX = to.file * SQUARE_SIZE + SQUARE_SIZE / 2;
-  const toY = to.rank * SQUARE_SIZE + SQUARE_SIZE / 2;
+function MoveArrow({ from, to, opacity, flipped }) {
+  const fFile = flipped ? 7 - from.file : from.file;
+  const fRank = flipped ? 7 - from.rank : from.rank;
+  const tFile = flipped ? 7 - to.file : to.file;
+  const tRank = flipped ? 7 - to.rank : to.rank;
+  const fromX = fFile * SQUARE_SIZE + SQUARE_SIZE / 2;
+  const fromY = fRank * SQUARE_SIZE + SQUARE_SIZE / 2;
+  const toX = tFile * SQUARE_SIZE + SQUARE_SIZE / 2;
+  const toY = tRank * SQUARE_SIZE + SQUARE_SIZE / 2;
 
   const dx = toX - fromX;
   const dy = toY - fromY;
@@ -65,11 +69,14 @@ export default function Board({
   legalMoves = [],
   arrows = [],
   onSquareClick,
+  flipped = false,
 }) {
   const squares = useMemo(() => {
     const result = [];
-    for (let rank = 0; rank < 8; rank++) {
-      for (let file = 0; file < 8; file++) {
+    for (let r = 0; r < 8; r++) {
+      for (let f = 0; f < 8; f++) {
+        const rank = flipped ? 7 - r : r;
+        const file = flipped ? 7 - f : f;
         const isLight = (rank + file) % 2 === 0;
         const square = coordsToSquare(rank, file);
         const isSelected = selectedSquare === square;
@@ -78,14 +85,15 @@ export default function Board({
 
         result.push({
           rank, file, isLight, square, isSelected, isLegalTarget, piece,
+          visualRow: r, visualCol: f,
         });
       }
     }
     return result;
-  }, [board, selectedSquare, legalMoves]);
+  }, [board, selectedSquare, legalMoves, flipped]);
 
-  const fileLabels = 'abcdefgh';
-  const rankLabels = '87654321';
+  const fileLabels = flipped ? 'hgfedcba' : 'abcdefgh';
+  const rankLabels = flipped ? '12345678' : '87654321';
 
   return (
     <div className="board-container">
@@ -95,9 +103,9 @@ export default function Board({
         style={{ maxWidth: BOARD_SIZE, display: 'block' }}
       >
         {/* Board squares */}
-        {squares.map(({ rank, file, isLight, square, isSelected, isLegalTarget, piece }) => {
-          const x = file * SQUARE_SIZE;
-          const y = rank * SQUARE_SIZE;
+        {squares.map(({ rank, file, isLight, square, isSelected, isLegalTarget, piece, visualRow, visualCol }) => {
+          const x = visualCol * SQUARE_SIZE;
+          const y = visualRow * SQUARE_SIZE;
           const cx = x + SQUARE_SIZE / 2;
           const cy = y + SQUARE_SIZE / 2;
           const key = piece ? getPieceKey(piece) : null;
@@ -227,6 +235,7 @@ export default function Board({
             from={arrow.from}
             to={arrow.to}
             opacity={arrow.opacity}
+            flipped={flipped}
           />
         ))}
       </svg>

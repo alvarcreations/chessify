@@ -14,6 +14,7 @@ export default function App() {
   const [legalMoves, setLegalMoves] = useState([]);
   const [turn, setTurn] = useState('w');
   const [fen, setFen] = useState(STARTING_FEN);
+  const [flipped, setFlipped] = useState(false);
 
   // Analysis state
   const [lines, setLines] = useState([]);
@@ -291,6 +292,7 @@ export default function App() {
                 legalMoves={legalMoves}
                 arrows={arrows}
                 onSquareClick={handleSquareClick}
+                flipped={flipped}
               />
             </div>
 
@@ -304,6 +306,9 @@ export default function App() {
                   <button className="btn-ghost" onClick={handleClear}>Clear</button>
                   <button className="btn-ghost" onClick={handleToggleTurn}>
                     Turn: {turn === 'w' ? 'White' : 'Black'}
+                  </button>
+                  <button className="btn-ghost" onClick={() => setFlipped(f => !f)}>
+                    Flip Board
                   </button>
                 </div>
                 <input
