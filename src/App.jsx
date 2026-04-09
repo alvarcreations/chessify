@@ -4,6 +4,7 @@ import Board from './components/Board';
 import AnalysisPanel from './components/AnalysisPanel';
 import EvalBar from './components/EvalBar';
 import ScreenshotImport from './components/ScreenshotImport';
+import GameImport from './components/GameImport';
 import { StockfishEngine } from './engine/stockfish';
 import { STARTING_FEN, EMPTY_FEN, fenToBoard, boardToFen, squareToCoords, isValidFen, sanitizeFen } from './utils/fen';
 import { playMoveSound, playCaptureSound, playUndoSound } from './utils/sound';
@@ -37,6 +38,11 @@ export default function App() {
   // API key
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('chessify-api-key') || '');
   const [showApiKey, setShowApiKey] = useState(false);
+
+  // Game mode (step through PGN)
+  const [gamePositions, setGamePositions] = useState(null); // array of { fen, san, ply }
+  const [gamePly, setGamePly] = useState(0);
+  const [gameInfo, setGameInfo] = useState(null);
 
   const handleApiKeyChange = useCallback((key) => {
     setApiKey(key);
@@ -74,7 +80,6 @@ export default function App() {
       setTurn(newGame.turn());
       setFen(prevFen);
     } catch {
-      // If chess.js rejects it, just load the board
       setBoard(fenToBoard(prevFen));
       setTurn(prevFen.split(' ')[1] || 'w');
       setFen(prevFen);
@@ -87,17 +92,53 @@ export default function App() {
     playUndoSound();
   }, [history]);
 
-  // Keyboard shortcut: Ctrl+Z / Cmd+Z for undo
+  // Keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault();
         handleUndo();
       }
+      // Arrow keys for game navigation
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setGamePly(prev => {
+          if (!gamePositions) return prev;
+          return Math.min(prev + 1, gamePositions.length - 1);
+        });
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setGamePly(prev => Math.max(prev - 1, 0));
+      }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo]);
+  }, [handleUndo, gamePositions]);
+
+  // Sync board when gamePly changes in game mode
+  useEffect(() => {
+    if (!gamePositions) return;
+    const pos = gamePositions[gamePly];
+    if (!pos) return;
+
+    try {
+      const newGame = new Chess(pos.fen);
+      setGame(newGame);
+      setBoard(fenToBoard(pos.fen));
+      setTurn(newGame.turn());
+      setFen(pos.fen);
+    } catch {
+      setBoard(fenToBoard(pos.fen));
+      setTurn(pos.fen.split(' ')[1] || 'w');
+      setFen(pos.fen);
+    }
+    setSelectedSquare(null);
+    setLegalMoves([]);
+    setLines([]);
+    setArrows([]);
+    setAnalyzing(false);
+  }, [gamePositions, gamePly]);
 
   // Sync game state from FEN (with history push)
   const syncFromFen = useCallback((newFen, addToHistory = true) => {
@@ -132,7 +173,6 @@ export default function App() {
     setAnalyzing(false);
     try { setGame(new Chess(newFen)); } catch { /* fine */ }
 
-    // Sound
     if (isCapture) playCaptureSound();
     else playMoveSound();
   }, [turn, pushHistory]);
@@ -196,17 +236,35 @@ export default function App() {
     const engine = engineRef.current;
     if (!engine || !engineReady) return;
 
+    // Stop any current analysis
+    engine.stop();
+
     setAnalyzing(true);
     setLines([]);
     setArrows([]);
     setDepth(0);
 
     const currentFen = boardToFen(board, turn);
+    const analysisTurn = turn; // capture for score normalization
+
+    // Normalize Stockfish scores (side-to-move perspective) to white's perspective
+    const normalizeLines = (rawLines) =>
+      rawLines.map((line) => {
+        if (analysisTurn === 'b') {
+          return {
+            ...line,
+            score: -line.score,
+            mateIn: line.isMate ? -line.mateIn : line.mateIn,
+          };
+        }
+        return line;
+      });
 
     engine.onProgress = ({ depth: d, lines: progressLines }) => {
       setDepth(d);
       if (progressLines && progressLines.length > 0) {
-        const withSan = progressLines.map((line) => ({
+        const normalized = normalizeLines(progressLines);
+        const withSan = normalized.map((line) => ({
           ...line,
           sanMove: uciToSan(line.pv[0], currentFen),
         }));
@@ -218,7 +276,8 @@ export default function App() {
     engine.onAnalysis = (finalLines) => {
       setAnalyzing(false);
       if (finalLines && finalLines.length > 0) {
-        const withSan = finalLines.map((line) => ({
+        const normalized = normalizeLines(finalLines);
+        const withSan = normalized.map((line) => ({
           ...line,
           sanMove: uciToSan(line.pv[0], currentFen),
         }));
@@ -231,11 +290,13 @@ export default function App() {
   }, [board, turn, engineReady, targetDepth, uciToSan, updateArrows]);
 
   const handleReset = useCallback(() => {
+    setGamePositions(null);
     syncFromFen(STARTING_FEN);
     playMoveSound();
   }, [syncFromFen]);
 
   const handleClear = useCallback(() => {
+    setGamePositions(null);
     syncFromFen(EMPTY_FEN);
     playMoveSound();
   }, [syncFromFen]);
@@ -249,14 +310,29 @@ export default function App() {
     try { setGame(new Chess(newFen)); } catch { /* fine */ }
   }, [turn, board, pushHistory]);
 
+  const handleFlip = useCallback(() => {
+    const newFlipped = !flipped;
+    setFlipped(newFlipped);
+    // Auto-sync turn to match bottom player
+    const bottomPlayerTurn = newFlipped ? 'b' : 'w';
+    setTurn(bottomPlayerTurn);
+    const newFen = boardToFen(board, bottomPlayerTurn);
+    setFen(newFen);
+    try { setGame(new Chess(newFen)); } catch { /* fine */ }
+  }, [flipped, board]);
+
   const handleFenChange = useCallback((newFen) => {
     setFen(newFen);
     if (isValidFen(newFen)) syncFromFen(newFen);
   }, [syncFromFen]);
 
   const handleFenDetected = useCallback((detectedFen) => {
+    setGamePositions(null);
     if (isValidFen(detectedFen)) {
       syncFromFen(detectedFen);
+      // Update flip state based on detected side to move
+      const detectedTurn = detectedFen.split(' ')[1] || 'w';
+      setFlipped(detectedTurn === 'b');
       playMoveSound();
       return;
     }
@@ -268,6 +344,7 @@ export default function App() {
       setBoard(newBoard);
       setFen(cleaned);
       setTurn(newTurn);
+      setFlipped(newTurn === 'b');
       setSelectedSquare(null);
       setLegalMoves([]);
       setLines([]);
@@ -277,7 +354,21 @@ export default function App() {
     }
   }, [syncFromFen, pushHistory]);
 
+  // Game mode: load PGN
+  const handleGameLoaded = useCallback((positions, metadata) => {
+    setGamePositions(positions);
+    setGamePly(0);
+    setGameInfo(metadata);
+    playMoveSound();
+  }, []);
+
+  const handleExitGame = useCallback(() => {
+    setGamePositions(null);
+    setGameInfo(null);
+  }, []);
+
   const canUndo = history.length > 0;
+  const inGameMode = !!gamePositions;
 
   // Compute visible arrows based on hovered line
   const visibleArrows = hoveredLine !== null
@@ -372,6 +463,88 @@ export default function App() {
               />
             </div>
 
+            {/* Game mode navigator */}
+            {inGameMode && (
+              <div className="glass-static" style={{ padding: '16px 20px' }}>
+                {/* Game info */}
+                {gameInfo && (gameInfo.White || gameInfo.Black) && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {gameInfo.White || '?'} vs {gameInfo.Black || '?'}
+                    </div>
+                    <div className="label" style={{ fontSize: 10, marginTop: 3 }}>
+                      {[gameInfo.Event, gameInfo.Date?.slice(0, 4), gameInfo.Result].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+                )}
+
+                {/* Move counter + navigation */}
+                <div className="flex items-center gap-3">
+                  <button
+                    className="btn-ghost"
+                    onClick={() => setGamePly(0)}
+                    disabled={gamePly === 0}
+                    style={{ opacity: gamePly === 0 ? 0.3 : 1, padding: '6px 10px', fontSize: 14 }}
+                    title="Go to start"
+                  >
+                    ⏮
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => setGamePly(p => Math.max(0, p - 1))}
+                    disabled={gamePly === 0}
+                    style={{ opacity: gamePly === 0 ? 0.3 : 1, padding: '6px 10px', fontSize: 14 }}
+                    title="Previous move (←)"
+                  >
+                    ◀
+                  </button>
+
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                      {gamePly === 0 ? 'Start' : (
+                        <>
+                          Move {Math.ceil(gamePly / 2)}
+                          <span style={{ color: 'var(--text-disabled)' }}>
+                            {' '}{gamePositions[gamePly]?.san}
+                          </span>
+                        </>
+                      )}
+                    </span>
+                    <div className="label" style={{ fontSize: 9, marginTop: 2 }}>
+                      {gamePly} / {gamePositions.length - 1} ply
+                    </div>
+                  </div>
+
+                  <button
+                    className="btn-ghost"
+                    onClick={() => setGamePly(p => Math.min(gamePositions.length - 1, p + 1))}
+                    disabled={gamePly >= gamePositions.length - 1}
+                    style={{ opacity: gamePly >= gamePositions.length - 1 ? 0.3 : 1, padding: '6px 10px', fontSize: 14 }}
+                    title="Next move (→)"
+                  >
+                    ▶
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => setGamePly(gamePositions.length - 1)}
+                    disabled={gamePly >= gamePositions.length - 1}
+                    style={{ opacity: gamePly >= gamePositions.length - 1 ? 0.3 : 1, padding: '6px 10px', fontSize: 14 }}
+                    title="Go to end"
+                  >
+                    ⏭
+                  </button>
+
+                  <button
+                    className="btn-ghost"
+                    onClick={handleExitGame}
+                    style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-disabled)' }}
+                  >
+                    Exit
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Controls card */}
             <div className="glass-static" style={{ padding: '20px' }}>
               <div className="flex flex-col gap-3">
@@ -382,7 +555,7 @@ export default function App() {
                   <button className="btn-ghost" onClick={handleToggleTurn}>
                     Turn: {turn === 'w' ? 'White' : 'Black'}
                   </button>
-                  <button className="btn-ghost" onClick={() => setFlipped(f => !f)}>
+                  <button className="btn-ghost" onClick={handleFlip}>
                     Flip Board
                   </button>
                   <button
@@ -421,7 +594,14 @@ export default function App() {
               <div className="divider" style={{ margin: '16px 0' }} />
 
               <div className="flex flex-col gap-3">
-                <span className="label">Import</span>
+                <span className="label">Import Game</span>
+                <GameImport onGameLoaded={handleGameLoaded} />
+              </div>
+
+              <div className="divider" style={{ margin: '16px 0' }} />
+
+              <div className="flex flex-col gap-3">
+                <span className="label">Import from Screenshot</span>
                 <ScreenshotImport
                   onFenDetected={handleFenDetected}
                   apiKey={apiKey}

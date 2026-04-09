@@ -162,13 +162,13 @@ export default function Board({
                 <>
                   {/* Shadow layer for depth */}
                   <text
-                    x={cx + 1}
+                    x={cx + 1.5}
                     y={cy + 3}
                     textAnchor="middle"
                     dominantBaseline="central"
                     fontSize={SQUARE_SIZE * 0.78}
                     fontFamily="'Segoe UI Symbol', 'Noto Sans Symbols 2', serif"
-                    fill="rgba(0,0,0,0.5)"
+                    fill={piece.color === 'w' ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.8)'}
                     pointerEvents="none"
                     style={{ userSelect: 'none' }}
                   >
@@ -182,9 +182,9 @@ export default function Board({
                     dominantBaseline="central"
                     fontSize={SQUARE_SIZE * 0.78}
                     fontFamily="'Segoe UI Symbol', 'Noto Sans Symbols 2', serif"
-                    fill={piece.color === 'w' ? '#f0f0f0' : '#8a8a8a'}
-                    stroke={piece.color === 'w' ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.7)'}
-                    strokeWidth={0.8}
+                    fill={piece.color === 'w' ? '#f5f5f5' : '#1a1a1a'}
+                    stroke={piece.color === 'w' ? 'rgba(0,0,0,0.92)' : 'rgba(220,220,220,0.22)'}
+                    strokeWidth={piece.color === 'w' ? 1.5 : 1.2}
                     paintOrder="stroke"
                     pointerEvents="none"
                     style={{ userSelect: 'none' }}

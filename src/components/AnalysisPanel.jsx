@@ -128,19 +128,17 @@ export default function AnalysisPanel({ lines, depth, targetDepth, analyzing, on
           )}
         </div>
 
-        {/* Analyze button */}
-        {!analyzing && (
-          <button className="btn-primary w-full" onClick={onAnalyze} style={{ padding: '14px 24px' }}>
-            {hasLines ? 'Re-analyze' : 'Analyze Position'}
-          </button>
-        )}
+        {/* Analyze button — always visible */}
+        <button className="btn-primary w-full" onClick={onAnalyze} style={{ padding: '14px 24px' }}>
+          {hasLines ? 'Re-analyze' : 'Analyze Position'}
+        </button>
         {analyzing && (
           <div
             style={{
               textAlign: 'center',
               color: 'var(--text-secondary)',
               fontSize: 13,
-              padding: '10px 0',
+              padding: '4px 0',
             }}
           >
             <span className="pulse-dot" />

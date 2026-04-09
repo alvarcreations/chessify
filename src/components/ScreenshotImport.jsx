@@ -48,7 +48,7 @@ const MODELS = [
   'claude-3-sonnet-20240229',
 ];
 
-const PROMPT = 'Look at this chess board screenshot. Return ONLY a valid FEN string representing this position. Include all 6 FEN fields (piece placement, active color, castling, en passant, halfmove, fullmove). If you can\'t determine the position, return ERROR.';
+const PROMPT = 'Look at this chess board screenshot. Return ONLY a valid FEN string representing this position. Include all 6 FEN fields (piece placement, active color, castling, en passant, halfmove, fullmove). For the active color field: examine any visible UI (clocks, move indicators, highlighted squares, arrows) to determine whose turn it is — use "w" for white and "b" for black. If you cannot determine whose turn it is, use "w". If you cannot detect a chess board at all, return ERROR.';
 
 async function callVisionApi(apiKey, base64, mediaType, model) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
