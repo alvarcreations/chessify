@@ -167,6 +167,37 @@ export class StockfishEngine {
     };
   }
 
+  /**
+   * Analyze a single position and resolve with the result lines.
+   * Meant for sequential batch analysis (game review).
+   * Returns a Promise that resolves with an array of line objects.
+   */
+  analyzeOnce(fen, depth = 14, numLines = 2) {
+    return new Promise((resolve) => {
+      this._send('stop');
+      this.analyzing = true;
+      this.currentLines.clear();
+      this.targetDepth = depth;
+
+      // Override callbacks for this one-shot analysis
+      this.onProgress = null;
+      this.onAnalysis = (lines) => {
+        this.onAnalysis = null;
+        resolve(lines);
+      };
+
+      this._send('ucinewgame');
+      this._send('isready');
+
+      this.onReady = () => {
+        this.onReady = null;
+        this._send(`setoption name MultiPV value ${numLines}`);
+        this._send(`position fen ${fen}`);
+        this._send(`go depth ${depth}`);
+      };
+    });
+  }
+
   stop() {
     this._send('stop');
     this.analyzing = false;

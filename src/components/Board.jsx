@@ -5,8 +5,11 @@ const BOARD_SIZE = 600;
 const SQUARE_SIZE = BOARD_SIZE / 8;
 
 // Unicode chess pieces — crisp at any size, always available
+// Both colors use the solid/filled Unicode variants (♚♛♜♝♞♟).
+// White pieces are colored white with a dark stroke; black pieces are dark with a light stroke.
+// The outline variants (♔♕♖♗♘♙) look hollow — the filled variants look like actual pieces.
 const PIECE_CHARS = {
-  wk: '\u2654', wq: '\u2655', wr: '\u2656', wb: '\u2657', wn: '\u2658', wp: '\u2659',
+  wk: '\u265A', wq: '\u265B', wr: '\u265C', wb: '\u265D', wn: '\u265E', wp: '\u265F',
   bk: '\u265A', bq: '\u265B', br: '\u265C', bb: '\u265D', bn: '\u265E', bp: '\u265F',
 };
 
@@ -100,7 +103,7 @@ export default function Board({
       <svg
         viewBox={`0 0 ${BOARD_SIZE} ${BOARD_SIZE}`}
         width="100%"
-        style={{ maxWidth: BOARD_SIZE, display: 'block' }}
+        style={{ maxWidth: 700, display: 'block' }}
       >
         {/* Board squares */}
         {squares.map(({ rank, file, isLight, square, isSelected, isLegalTarget, piece, visualRow, visualCol }) => {
@@ -160,15 +163,15 @@ export default function Board({
               {/* Piece — rendered as Unicode text */}
               {key && (
                 <>
-                  {/* Shadow layer for depth */}
+                  {/* Drop shadow */}
                   <text
-                    x={cx + 1.5}
-                    y={cy + 3}
+                    x={cx + 1}
+                    y={cy + 2.5}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fontSize={SQUARE_SIZE * 0.78}
+                    fontSize={SQUARE_SIZE * 0.80}
                     fontFamily="'Segoe UI Symbol', 'Noto Sans Symbols 2', serif"
-                    fill={piece.color === 'w' ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.8)'}
+                    fill="rgba(0,0,0,0.35)"
                     pointerEvents="none"
                     style={{ userSelect: 'none' }}
                   >
@@ -177,14 +180,14 @@ export default function Board({
                   {/* Main piece */}
                   <text
                     x={cx}
-                    y={cy + 2}
+                    y={cy + 1}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fontSize={SQUARE_SIZE * 0.78}
+                    fontSize={SQUARE_SIZE * 0.80}
                     fontFamily="'Segoe UI Symbol', 'Noto Sans Symbols 2', serif"
-                    fill={piece.color === 'w' ? '#f5f5f5' : '#1a1a1a'}
-                    stroke={piece.color === 'w' ? 'rgba(0,0,0,0.92)' : 'rgba(220,220,220,0.22)'}
-                    strokeWidth={piece.color === 'w' ? 1.5 : 1.2}
+                    fill={piece.color === 'w' ? '#fffef5' : '#120e08'}
+                    stroke={piece.color === 'w' ? 'rgba(0,0,0,0.88)' : 'rgba(255,245,220,0.6)'}
+                    strokeWidth={piece.color === 'w' ? 4 : 2.5}
                     paintOrder="stroke"
                     pointerEvents="none"
                     style={{ userSelect: 'none' }}

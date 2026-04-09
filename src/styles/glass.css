@@ -32,10 +32,10 @@
   --accent-glow: rgba(124, 92, 252, 0.25);
 
   /* Board */
-  --board-light: rgba(255, 255, 255, 0.025);
-  --board-dark: rgba(255, 255, 255, 0.07);
-  --board-selected: rgba(124, 92, 252, 0.2);
-  --board-legal: rgba(124, 92, 252, 0.12);
+  --board-light: #f0d9b5;
+  --board-dark: #b58863;
+  --board-selected: rgba(20, 85, 30, 0.65);
+  --board-legal: rgba(20, 85, 30, 0.5);
 
   /* Motion */
   --transition-fast: 150ms ease-out;
@@ -247,15 +247,17 @@ body::before {
 /* ---- Responsive layout ---- */
 .app-layout {
   display: grid;
-  grid-template-columns: minmax(0, 600px) minmax(320px, 1fr);
+  grid-template-columns: 1fr 400px;
   gap: 32px;
   align-items: start;
+  max-width: 1440px;
+  margin: 0 auto;
 }
 
 @media (max-width: 960px) {
   .app-layout {
     grid-template-columns: 1fr;
-    max-width: 600px;
+    max-width: 660px;
   }
 }
 
