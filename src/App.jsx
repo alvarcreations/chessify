@@ -5,6 +5,7 @@ import AnalysisPanel from './components/AnalysisPanel';
 import EvalBar from './components/EvalBar';
 import ScreenshotImport from './components/ScreenshotImport';
 import GameImport from './components/GameImport';
+import PiecePalette from './components/PiecePalette';
 import { StockfishEngine } from './engine/stockfish';
 import { STARTING_FEN, EMPTY_FEN, fenToBoard, boardToFen, squareToCoords, isValidFen, sanitizeFen } from './utils/fen';
 import { playMoveSound, playCaptureSound, playUndoSound } from './utils/sound';
@@ -38,6 +39,9 @@ export default function App() {
   // API key
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('chessify-api-key') || '');
   const [showApiKey, setShowApiKey] = useState(false);
+
+  // Piece placement palette
+  const [placingPiece, setPlacingPiece] = useState(null); // null | 'eraser' | { color, type }
 
   // Game mode (step through PGN)
   const [gamePositions, setGamePositions] = useState(null); // array of { fen, san, ply }
@@ -179,6 +183,21 @@ export default function App() {
 
   // Free-form square click
   const handleSquareClick = useCallback((square, rank, file) => {
+    // Piece palette placement mode
+    if (placingPiece) {
+      const newBoard = board.map(r => [...r]);
+      if (placingPiece === 'eraser') {
+        if (newBoard[rank][file]) {
+          newBoard[rank][file] = null;
+          syncFromBoard(newBoard, undefined, true);
+        }
+      } else {
+        newBoard[rank][file] = { color: placingPiece.color, type: placingPiece.type };
+        syncFromBoard(newBoard);
+      }
+      return;
+    }
+
     if (selectedSquare) {
       if (selectedSquare === square) {
         setSelectedSquare(null);
@@ -207,7 +226,7 @@ export default function App() {
       setSelectedSquare(square);
       setLegalMoves([]);
     }
-  }, [selectedSquare, board, syncFromBoard]);
+  }, [selectedSquare, board, syncFromBoard, placingPiece]);
 
   // UCI to SAN
   const uciToSan = useCallback((uciMove, currentFen) => {
@@ -291,12 +310,14 @@ export default function App() {
 
   const handleReset = useCallback(() => {
     setGamePositions(null);
+    setPlacingPiece(null);
     syncFromFen(STARTING_FEN);
     playMoveSound();
   }, [syncFromFen]);
 
   const handleClear = useCallback(() => {
     setGamePositions(null);
+    setPlacingPiece(null);
     syncFromFen(EMPTY_FEN);
     playMoveSound();
   }, [syncFromFen]);
@@ -453,14 +474,20 @@ export default function App() {
                 mateIn={bestMateIn}
                 visible={lines.length > 0}
               />
-              <Board
-                board={board}
-                selectedSquare={selectedSquare}
-                legalMoves={legalMoves}
-                arrows={visibleArrows}
-                onSquareClick={handleSquareClick}
-                flipped={flipped}
-              />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <Board
+                  board={board}
+                  selectedSquare={selectedSquare}
+                  legalMoves={legalMoves}
+                  arrows={visibleArrows}
+                  onSquareClick={handleSquareClick}
+                  flipped={flipped}
+                />
+                <PiecePalette
+                  placingPiece={placingPiece}
+                  onSelect={setPlacingPiece}
+                />
+              </div>
             </div>
 
             {/* Game mode navigator */}
