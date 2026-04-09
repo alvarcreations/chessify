@@ -3,10 +3,109 @@ import { Chess } from 'chess.js';
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 /**
+ * Strip { comments }, (variations), NAG symbols, and move annotations
+ * from a PGN string so chess.js can parse it cleanly.
+ */
+function cleanPgn(pgn) {
+  let result = '';
+  let depth = 0;
+  let inCurly = false;
+
+  for (let i = 0; i < pgn.length; i++) {
+    const ch = pgn[i];
+
+    if (inCurly) {
+      if (ch === '}') inCurly = false;
+      continue; // skip everything inside { }
+    }
+
+    if (ch === '{') {
+      inCurly = true;
+      continue;
+    }
+
+    if (ch === '(') {
+      depth++;
+      continue;
+    }
+
+    if (ch === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+
+    if (depth === 0) {
+      result += ch;
+    }
+  }
+
+  // Remove NAG symbols ($1 $2 ...)
+  result = result.replace(/\$\d+/g, ' ');
+  // Normalize whitespace
+  result = result.replace(/\s+/g, ' ').trim();
+
+  return result;
+}
+
+/**
+ * Extract SAN moves from clean PGN text (no comments/variations).
+ * Returns array of SAN strings.
+ */
+function extractSanMoves(cleanText) {
+  // Remove headers [Tag "value"]
+  cleanText = cleanText.replace(/\[\w+\s+"[^"]*"\]/g, '');
+  // Remove game result at end
+  cleanText = cleanText.replace(/\s*(1-0|0-1|1\/2-1\/2|\*)\s*$/, '');
+
+  const tokens = cleanText.trim().split(/\s+/);
+  const moves = [];
+
+  for (const token of tokens) {
+    if (!token) continue;
+    // Skip move numbers like "1.", "2...", "10."
+    if (/^\d+\.+$/.test(token)) continue;
+    // Skip result tokens
+    if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(token)) continue;
+    moves.push(token);
+  }
+
+  return moves;
+}
+
+/**
+ * Replay a list of SAN moves from a starting position.
+ * Returns array of { fen, san, ply } positions.
+ */
+function replayMoves(sanMoves, startFen) {
+  let game;
+  try {
+    game = new Chess(startFen || STARTING_FEN);
+  } catch {
+    game = new Chess();
+  }
+
+  const positions = [{ fen: game.fen(), san: null, ply: 0 }];
+
+  for (const san of sanMoves) {
+    try {
+      game.move(san);
+      positions.push({ fen: game.fen(), san, ply: positions.length });
+    } catch {
+      break; // stop at first invalid move
+    }
+  }
+
+  return positions;
+}
+
+/**
  * Parse a PGN string into an array of positions.
- * Returns { positions, metadata } where positions is an array of { fen, san, ply }.
+ * Returns { positions, metadata }.
+ * Uses three-stage fallback to handle Chess.com/Lichess annotation quirks.
  */
 export function parsePgn(pgn) {
+  if (!pgn || !pgn.trim()) throw new Error('Empty PGN');
+
   // Extract metadata tags
   const metadata = {};
   const tagRegex = /\[(\w+)\s+"([^"]+)"\]/g;
@@ -15,34 +114,43 @@ export function parsePgn(pgn) {
     metadata[tagMatch[1]] = tagMatch[2];
   }
 
-  // Load PGN with chess.js to extract moves
-  const masterGame = new Chess();
-  const success = masterGame.loadPgn(pgn);
-  if (!success) throw new Error('Invalid PGN — could not parse moves');
-
-  const allMoves = masterGame.history({ verbose: true });
-
-  // Determine starting position
   const startFen = metadata.FEN || STARTING_FEN;
 
-  // Replay from start, collecting FEN at each step
-  let replayGame;
+  // Stage 1: try chess.js loadPgn on original PGN
   try {
-    replayGame = new Chess(startFen);
-  } catch {
-    replayGame = new Chess();
-  }
-
-  const positions = [{ fen: replayGame.fen(), san: null, ply: 0 }];
-
-  for (const move of allMoves) {
-    try {
-      replayGame.move(move.san);
-      positions.push({ fen: replayGame.fen(), san: move.san, ply: positions.length });
-    } catch {
-      break; // stop at invalid move
+    const masterGame = new Chess();
+    if (masterGame.loadPgn(pgn)) {
+      const allMoves = masterGame.history({ verbose: true });
+      if (allMoves.length > 0) {
+        const positions = replayMoves(allMoves.map(m => m.san), startFen);
+        return { positions, metadata };
+      }
     }
+  } catch {
+    // fall through to next stage
   }
+
+  // Stage 2: strip comments/variations, try chess.js loadPgn again
+  const cleaned = cleanPgn(pgn);
+  try {
+    const masterGame = new Chess();
+    if (masterGame.loadPgn(cleaned)) {
+      const allMoves = masterGame.history({ verbose: true });
+      if (allMoves.length > 0) {
+        const positions = replayMoves(allMoves.map(m => m.san), startFen);
+        return { positions, metadata };
+      }
+    }
+  } catch {
+    // fall through to next stage
+  }
+
+  // Stage 3: parse and replay moves manually without chess.js PGN loader
+  const sanMoves = extractSanMoves(cleaned);
+  if (sanMoves.length === 0) throw new Error('No moves found in PGN');
+
+  const positions = replayMoves(sanMoves, startFen);
+  if (positions.length <= 1) throw new Error('Could not apply any moves from PGN');
 
   return { positions, metadata };
 }
